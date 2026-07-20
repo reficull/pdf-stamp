@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF 盖章工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .stamp-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid #ef4444; background: rgba(239,68,68,0.2); position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 20; }
+    #preview-container canvas { max-width: 100%; height: auto; box-shadow: 0 4px 24px rgba(0,0,0,0.12); border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 bg-red-600 rounded-lg flex items-center justify-center">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold text-gray-900">PDF 盖章工具</h1>
+          <p class="text-xs text-gray-500">本地处理，文件不出浏览器</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-6">
+    <!-- Step 1: Upload Area -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <!-- PDF Upload -->
+      <div id="pdf-upload-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-red-400 hover:bg-red-50/50 transition-all">
+        <div id="pdf-upload-hint">
+          <svg class="w-10 h-10 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+          </svg>
+          <p class="text-gray-600 font-medium">上传 PDF 文件</p>
+          <p class="text-xs text-gray-400 mt-1">拖拽到此处或点击选择，最大 30MB</p>
+        </div>
+        <div id="pdf-loaded-info" class="hidden">
+          <svg class="w-10 h-10 mx-auto mb-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p id="pdf-name" class="text-gray-800 font-medium truncate"></p>
+          <p id="pdf-pages" class="text-xs text-gray-500 mt-1"></p>
+        </div>
+        <input type="file" id="pdf-input" accept="application/pdf" class="hidden">
+      </div>
+
+      <!-- Stamp Upload -->
+      <div id="stamp-upload-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer hover:border-red-400 hover:bg-red-50/50 transition-all">
+        <div id="stamp-upload-hint">
+          <svg class="w-10 h-10 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <p class="text-gray-600 font-medium">上传印章图片</p>
+          <p class="text-xs text-gray-400 mt-1">建议使用透明背景 PNG，效果最佳</p>
+        </div>
+        <div id="stamp-loaded-info" class="hidden">
+          <img id="stamp-thumb" class="w-16 h-16 object-contain mx-auto mb-2 rounded" alt="stamp preview">
+          <p id="stamp-name" class="text-gray-800 font-medium truncate"></p>
+          <p class="text-xs text-gray-500 mt-1">印章已就绪</p>
+        </div>
+        <input type="file" id="stamp-input" accept="image/png,image/jpeg,image/jpg" class="hidden">
+      </div>
+    </div>
+
+    <!-- Step 2: Controls Panel -->
+    <div id="controls-panel" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6 hidden">
+      <h2 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        盖章参数
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+
+        <!-- Position -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">盖章位置</label>
+          <div class="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-500">
+            自定义拖拽
+          </div>
+        </div>
+
+        <!-- Scale -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">印章大小：<span id="scale-value">100%</span></label>
+          <input type="range" id="scale-slider" min="30" max="200" value="100" class="w-full accent-red-500">
+        </div>
+
+        <!-- Opacity -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">透明度：<span id="opacity-value">85%</span></label>
+          <input type="range" id="opacity-slider" min="10" max="100" value="85" class="w-full accent-red-500">
+        </div>
+
+        <!-- Rotation -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">旋转角度：<span id="rotation-value">0°</span></label>
+          <input type="range" id="rotation-slider" min="-45" max="45" value="0" class="w-full accent-red-500">
+        </div>
+
+        <!-- Page Range -->
+        <div>
+          <label class="block text-xs text-gray-500 mb-1.5">盖章页数</label>
+          <select id="page-range" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none">
+            <option value="all">全部页面</option>
+            <option value="first">仅第一页</option>
+            <option value="last">仅最后一页</option>
+            <option value="custom">自定义范围</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Custom page range input -->
+      <div id="custom-pages-row" class="mt-3 hidden">
+        <label class="block text-xs text-gray-500 mb-1.5">页码范围（如：1,3,5-8）</label>
+        <input type="text" id="custom-pages-input" placeholder="1,3,5-8" class="w-full md:w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none">
+      </div>
+    </div>
+
+    <!-- Step 3: Preview -->
+    <div id="preview-section" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          预览（第 <span id="preview-page-num">1</span> / <span id="preview-total-pages">0</span> 页）
+          <span class="text-xs text-gray-400 font-normal ml-1">— 盖章位置以红点标记</span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <button id="prev-page-btn" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-40">上一页</button>
+          <button id="next-page-btn" class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-40">下一页</button>
+        </div>
+      </div>
+      <div id="preview-container" class="flex justify-center bg-gray-100 rounded-lg p-4 relative min-h-[200px]"></div>
+    </div>
+
+    <!-- Step 4: Action -->
+    <div id="action-section" class="text-center mb-6 hidden">
+      <button id="process-btn" class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors shadow-lg shadow-red-200">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        生成盖章 PDF
+      </button>
+      <div id="progress-bar" class="hidden mt-4 max-w-md mx-auto">
+        <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div id="progress-fill" class="bg-red-500 h-full rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+        <p id="progress-text" class="text-xs text-gray-500 mt-1">处理中...</p>
+      </div>
+    </div>
+
+    <!-- Download Result -->
+    <div id="download-section" class="text-center mb-6 hidden">
+      <div class="inline-flex flex-col items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-8 py-6">
+        <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-gray-800 font-semibold">盖章完成！</p>
+        <button id="download-btn" class="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          下载盖章 PDF
+        </button>
+        <button id="reset-btn" class="text-sm text-gray-500 hover:text-gray-700 underline mt-1">重新盖章</button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="text-center text-xs text-gray-400 py-6">
+    所有处理均在本地浏览器完成，文件不会上传到任何服务器
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
