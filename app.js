@@ -448,7 +448,7 @@
       console.error('Process error:', err);
       progressBar.classList.add('hidden');
       processBtn.classList.remove('hidden');
-      alert('处理失败：' + err.message);
+      alert('Processing failed: ' + err.message);
     }
   }
 
